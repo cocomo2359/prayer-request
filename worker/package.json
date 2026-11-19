@@ -5,9 +5,11 @@
     "dev": "wrangler dev --port 8787",
     "db:init:local": "wrangler d1 execute prayer-request-db --local --file schema.sql",
     "db:init:remote": "wrangler d1 execute prayer-request-db --remote --file schema.sql",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy",
+    "test": "node --test --experimental-test-coverage --test-coverage-include=src/**"
   },
   "devDependencies": {
     "wrangler": "^4.165.0"
-  }
+  },
+  "type": "module"
 }
