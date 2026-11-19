@@ -1,16 +1,9 @@
 {
-  "name": "cell-prayer-wall",
-  "version": "1.0.0",
-  "description": "Prayer request app for a small Christian cell group",
-  "main": "server.js",
-  "type": "commonjs",
-  "engines": { "node": ">=22.13" },
+  "name": "prayer-request",
+  "version": "2.0.0",
+  "description": "Prayer request app for a small Christian cell group (GitHub Pages + Supabase)",
+  "private": true,
   "scripts": {
-    "start": "node server.js",
-    "dev": "node --watch server.js"
-  },
-  "dependencies": {
-    "bcryptjs": "^2.4.3",
-    "express": "^4.21.2"
+    "start": "node dev-server.js"
   }
 }

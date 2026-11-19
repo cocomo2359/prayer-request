@@ -1,7 +1,13 @@
 /* Prayer Wall – single-page app (vanilla JS, hash routing) */
 (() => {
   const $app = document.getElementById('app');
-  const state = { user: null, avatars: [], categories: [], filter: 'all', stats: null };
+  const state = {
+    user: null,
+    avatars: ['🙂', '😊', '🕊️', '🌻', '🌿', '⭐', '🔥', '🦁', '🐑', '🌈', '☀️', '💧', '🍇', '🌾', '⛰️', '🎵'],
+    categories: ['General', 'Health', 'Family', 'Work', 'Studies', 'Finances', 'Spiritual', 'Thanksgiving'],
+    filter: 'all',
+    stats: null,
+  };
 
   // Public-domain verses (World English Bible)
   const VERSES = [
@@ -19,25 +25,18 @@
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
   async function api(path, opts = {}) {
-    const res = await fetch('/api' + path, {
-      method: opts.method || 'GET',
-      headers: opts.body ? { 'Content-Type': 'application/json' } : {},
-      body: opts.body ? JSON.stringify(opts.body) : undefined,
-      credentials: 'same-origin',
-    });
-    const data = await res.json().catch(() => ({}));
-    if (res.status === 401 && path !== '/login' && path !== '/register') {
-      state.user = null;
-      go('#/login');
-      throw new Error(data.error || 'Please log in');
+    try {
+      return await window.PrayerAPI.call(path, opts);
+    } catch (err) {
+      if (err.status === 401 && path !== '/login' && path !== '/register') {
+        state.user = null;
+        go('#/login');
+      } else if (err.status === 403 && err.message === 'Please change your password first') {
+        if (state.user) state.user.must_change_password = true;
+        go('#/change-password');
+      }
+      throw err;
     }
-    if (res.status === 403 && data.error === 'Please change your password first') {
-      state.user && (state.user.must_change_password = true);
-      go('#/change-password');
-      throw new Error(data.error);
-    }
-    if (!res.ok) throw new Error(data.error || 'Something went wrong');
-    return data;
   }
 
   function toast(msg, isErr) {
@@ -49,7 +48,7 @@
   }
 
   function timeAgo(sqlDate) {
-    const d = new Date(sqlDate.replace(' ', 'T') + 'Z');
+    const d = new Date(sqlDate);
     const s = Math.floor((Date.now() - d) / 1000);
     if (s < 60) return 'just now';
     if (s < 3600) return Math.floor(s / 60) + 'm ago';
@@ -158,7 +157,7 @@
   // ---------- views ----------
   async function viewLogin() {
     let needsLeader = false;
-    try { needsLeader = (await (await fetch('/api/setup-status')).json()).needsLeader; } catch { /* offline */ }
+    try { needsLeader = (await api('/setup-status')).needsLeader; } catch { /* offline */ }
     if (needsLeader) return viewRegister(true);
     $app.innerHTML = `
       <div class="auth-wrap"><div class="auth-card">
@@ -546,7 +545,7 @@
       </div>`);
 
     if (!admin) return;
-    const inviteMsg = (code) => `Join our cell prayer wall 🙏\n${location.origin}/#/register\nInvite code: ${code}`;
+    const inviteMsg = (code) => `Join our cell prayer wall 🙏\n${location.origin}${location.pathname}#/register\nInvite code: ${code}`;
     document.getElementById('copyInvite').onclick = async () => {
       const text = inviteMsg(document.getElementById('code').textContent);
       try { await navigator.clipboard.writeText(text); toast('Invite copied — paste it in your cell chat'); }
@@ -633,18 +632,24 @@
   }
 
   async function loadMe() {
-    try {
-      const me = await fetch('/api/me', { credentials: 'same-origin' });
-      if (!me.ok) return (state.user = null);
-      const d = await me.json();
-      state.user = d.user; state.avatars = d.avatars; state.categories = d.categories;
-    } catch { state.user = null; }
+    if (!window.PrayerAPI.hasToken()) return (state.user = null);
+    try { state.user = (await window.PrayerAPI.call('/me')).user; } catch { state.user = null; }
+  }
+
+  function viewNotConfigured() {
+    $app.innerHTML = `
+      <div class="auth-wrap"><div class="auth-card">
+        <div class="mascot">🛠️</div>
+        <h1>Almost ready</h1>
+        <p class="muted">This prayer wall is not connected to its database yet. Add your Supabase project URL and key to <b>public/config.js</b> (see the README).</p>
+      </div></div>`;
   }
 
   // ---------- router ----------
   async function render() {
     document.getElementById('modal-root').innerHTML = '';
     const hash = location.hash || '#/';
+    if (!window.PrayerAPI.configured) return viewNotConfigured();
     if (!state.user) await loadMe();
     if (!state.user) return hash === '#/register' ? viewRegister(false) : viewLogin();
     if (state.user.must_change_password) return viewChangePassword();
