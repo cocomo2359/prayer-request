@@ -3,5 +3,5 @@
 window.PRAYER_WALL_CONFIG = {
   apiUrl: location.hostname === 'localhost'
     ? 'http://localhost:8787'
-    : '', // set after deploying, e.g. https://prayer-request-api.<subdomain>.workers.dev
+    : 'https://prayer-request-api.prayer-request-api.workers.dev',
 };

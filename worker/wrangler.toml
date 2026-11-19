@@ -9,4 +9,4 @@ ALLOWED_ORIGINS = "https://cocomo2359.github.io,http://localhost:8080"
 [[d1_databases]]
 binding = "DB"
 database_name = "prayer-request-db"
-database_id = "REPLACE_AFTER_D1_CREATE"
+database_id = "6ec445f2-ff62-47f6-a0e7-942a0285545b"
