@@ -9,12 +9,10 @@ A small, friendly prayer-request app for a Christian cell group (10–12 people)
 | Part | Choice | Cost |
 |---|---|---|
 | App screens | Plain HTML/CSS/JavaScript in `public/`, hosted on **GitHub Pages** | Free |
-| Database | **Supabase** (hosted PostgreSQL) | Free plan |
-| Rules & security | Database functions in `supabase/schema.sql` | — |
+| Server (API) | **Cloudflare Worker** in `worker/` | Free plan (100,000 requests/day) |
+| Database | **Cloudflare D1** (SQLite) | Free plan (5 GB) |
 
-The browser only holds Supabase's *public* key. That key cannot read or change any table directly; it can only call the functions in `supabase/schema.sql`, and each function checks who is logged in and what they are allowed to do. Passwords are stored as bcrypt hashes.
-
-> Supabase's free plan pauses a project after about a week with no activity. If that happens, open the Supabase dashboard and click **Restore** — no data is lost.
+All the rules (logins, default password, invite code, admin-only member management, owner-only edit/delete/answer) are checked in the Worker. Passwords are stored as salted PBKDF2 hashes, sessions use random tokens, and the API only accepts calls from the GitHub Pages site. Nothing pauses when the cell is quiet.
 
 ## Features
 
@@ -29,32 +27,64 @@ The browser only holds Supabase's *public* key. That key cannot read or change a
 
 ## Setting it up (one time)
 
-1. **Create a Supabase project** — sign up free at https://supabase.com, click **New project**, pick a region close to your cell, and wait for it to finish.
-2. **Create the database** — in the project, open **SQL Editor → New query**, paste the whole of `supabase/schema.sql`, and click **Run**. (Safe to run again after updates.)
-3. **Connect the app** — open **Project Settings → API Keys** (or the **Connect** button) and copy the **Project URL** and the **publishable** key (`sb_publishable_…`, or the legacy `anon` key). Put them in `public/config.js`, then commit and push.
-   ⚠️ Never use the `secret` / `service_role` key.
-4. **Open the app** — GitHub Actions publishes `public/` to GitHub Pages on every push to `main`. Visit the live link and register: the first account becomes the System Admin.
+You need a free Cloudflare account (https://dash.cloudflare.com/sign-up). Then, from the `worker/` folder:
+
+```bash
+npm install
+```
+
+```bash
+npx wrangler login
+```
+
+```bash
+npx wrangler d1 create prayer-request-db
+```
+
+Copy the `database_id` it prints into `worker/wrangler.toml`, then create the tables and deploy:
+
+```bash
+npm run db:init:remote
+```
+
+```bash
+npm run deploy
+```
+
+Put the `https://prayer-request-api.<subdomain>.workers.dev` address it prints into `public/config.js`, commit and push. GitHub Actions republishes the site; open it and register — **the first account becomes the System Admin**.
+
+If you host the screens somewhere other than `https://cocomo2359.github.io`, add that address to `ALLOWED_ORIGINS` in `worker/wrangler.toml` and deploy again.
 
 ## Running locally
+
+In one terminal (the API, with a local database):
+
+```bash
+cd worker && npm run db:init:local && npm run dev
+```
+
+In another (the screens):
 
 ```bash
 npm start
 ```
 
-Opens a preview at http://localhost:8080 (uses the same Supabase project as `public/config.js`).
+Open http://localhost:8080 — on localhost the app talks to the local Worker automatically.
 
 ## Project layout
 
 ```
-public/
-  index.html       app shell
-  app.js           all screens (login, register, dashboard, request, members, profile)
-  api.js           calls the Supabase database functions
-  config.js        your Supabase URL + publishable key
-  styles.css       the chunky, colourful look
-supabase/
-  schema.sql       tables, security rules and all app logic
+public/              the app (published to GitHub Pages)
+  index.html         app shell
+  app.js             all screens (login, register, dashboard, request, members, profile)
+  api.js             calls the Worker API
+  config.js          the Worker's address
+  styles.css         the chunky, colourful look
+worker/              the API (deployed to Cloudflare)
+  src/index.js       routes, auth and all the rules
+  schema.sql         D1 database tables
+  wrangler.toml      Cloudflare settings
 .github/workflows/
-  pages.yml        publishes public/ to GitHub Pages
-dev-server.js      local preview server
+  pages.yml          publishes public/ to GitHub Pages
+dev-server.js        local preview server for public/
 ```

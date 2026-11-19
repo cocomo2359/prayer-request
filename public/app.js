@@ -48,7 +48,8 @@
   }
 
   function timeAgo(sqlDate) {
-    const d = new Date(sqlDate);
+    // D1 stores UTC as "YYYY-MM-DD HH:MM:SS"
+    const d = new Date(/^\d{4}-\d\d-\d\d \d/.test(sqlDate) ? sqlDate.replace(' ', 'T') + 'Z' : sqlDate);
     const s = Math.floor((Date.now() - d) / 1000);
     if (s < 60) return 'just now';
     if (s < 3600) return Math.floor(s / 60) + 'm ago';
@@ -641,7 +642,7 @@
       <div class="auth-wrap"><div class="auth-card">
         <div class="mascot">🛠️</div>
         <h1>Almost ready</h1>
-        <p class="muted">This prayer wall is not connected to its database yet. Add your Supabase project URL and key to <b>public/config.js</b> (see the README).</p>
+        <p class="muted">This prayer wall is not connected to its database yet. Add the API address to <b>public/config.js</b> (see the README).</p>
       </div></div>`;
   }
 
