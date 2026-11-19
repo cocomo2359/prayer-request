@@ -4,6 +4,8 @@ A small, friendly prayer-request app for a Christian cell group (10–12 people)
 
 **Live app:** https://cocomo2359.github.io/prayer-request/
 
+🎬 **Demo video (90 s):** [media/prayer-wall-demo.mp4](media/prayer-wall-demo.mp4)
+
 ## How it's built
 
 | Part | Choice | Cost |
