@@ -16,6 +16,18 @@ describe('member list', () => {
   });
 });
 
+test('only admins can see who is still on the default password', async () => {
+  const { api, admin, member } = setup();
+  const a = await admin();
+  await api('POST', '/api/members', { token: a.token, body: { username: 'newbie', display_name: 'Newbie' } });
+  const m = await member(a.token, 'mary');
+  const asMember = (await api('GET', '/api/members', { token: m.token })).body.members;
+  for (const row of asMember) assert.equal('must_change_password' in row, false, row.username);
+  const asAdmin = (await api('GET', '/api/members', { token: a.token })).body.members;
+  assert.equal(asAdmin.find((x) => x.username === 'newbie').must_change_password, true);
+  assert.equal(asAdmin.find((x) => x.username === 'mary').must_change_password, false);
+});
+
 describe('adding members (admin)', () => {
   test('admin adds a member who logs in with the default password', async () => {
     const { api, admin, login } = setup();
