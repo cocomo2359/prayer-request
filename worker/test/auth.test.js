@@ -45,12 +45,23 @@ describe('setup-status and register', () => {
       [{ display_name: 'Bob', username: 'bob', password: '12345' }, /at least 6/],
       [{ display_name: 'Bob', username: 'bob', password: 'p@ssw0rd' }, /other than the default/],
       [{ display_name: 'Bob', username: 'ADMIN', password: 'secret1' }, /already taken/],
+      [{ display_name: 'Bob', username: 'b'.repeat(31), password: 'secret1' }, /Username must be/],
     ];
     for (const [body, msg] of cases) {
       const r = await reg(body);
       assert.equal(r.status, 400, JSON.stringify(body));
       assert.match(r.body.error, msg);
     }
+  });
+
+  test('a too-long username is rejected, not truncated into a different account', async () => {
+    const { api, admin, DB } = setup();
+    const a = await admin();
+    const { code } = (await api('GET', '/api/invite', { token: a.token })).body;
+    const r = await api('POST', '/api/register', { body: { display_name: 'Long', username: 'a'.repeat(35), password: 'secret1', inviteCode: code } });
+    assert.equal(r.status, 400);
+    assert.match(r.body.error, /3–30 characters/);
+    assert.equal(DB.raw.prepare('SELECT COUNT(*) AS n FROM users').get().n, 1);
   });
 
   test('wrong invite codes are throttled after 20 tries', async () => {

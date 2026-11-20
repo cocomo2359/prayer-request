@@ -43,6 +43,7 @@ describe('adding members (admin)', () => {
     const add = (token, body) => api('POST', '/api/members', { token, body });
     assert.equal((await add(m.token, { username: 'zed', display_name: 'Zed' })).status, 403);
     assert.match((await add(a.token, { username: 'x', display_name: 'X' })).body.error, /Username must be/);
+    assert.match((await add(a.token, { username: 'x'.repeat(35), display_name: 'Long' })).body.error, /Username must be/);
     assert.match((await add(a.token, { username: 'okname', display_name: '' })).body.error, /member’s name/);
     assert.match((await add(a.token, { username: 'MARY', display_name: 'Mary 2' })).body.error, /already taken/);
   });
