@@ -53,6 +53,37 @@ describe('dashboard stats', () => {
     assert.deepEqual([s.streak, s.prayedToday], [0, false]);
   });
 
+  test('counts every prayer and the full streak, even with thousands of prayers', async () => {
+    const { api, admin, request, DB } = setup();
+    const a = await admin();
+    const q = await request(a.token);
+    // 20 prayers a day for 200 days in a row (4,000 prayers), each at a different minute.
+    const ins = DB.raw.prepare(`INSERT INTO prayers (request_id, user_id, body, created_at)
+      VALUES (?, ?, 'p', datetime('now', 'start of day', ?, ?))`);
+    for (let d = 0; d < 200; d++) for (let k = 0; k < 20; k++) ins.run(q.id, a.user.id, `-${d} days`, `+${k} minutes`);
+    const s = (await api('GET', '/api/stats?tz=UTC', { token: a.token })).body;
+    assert.equal(s.myPrayers, 4000);
+    assert.equal(s.streak, 200);
+  });
+
+  test('streak days follow the member’s time zone, including half-hour offsets', async () => {
+    const { api, admin, request, DB } = setup();
+    const a = await admin();
+    const q = await request(a.token);
+    // 20:00 UTC yesterday is already "today" in India (UTC+5:30, 01:30) but still yesterday in UTC.
+    DB.raw.prepare(`INSERT INTO prayers (request_id, user_id, body, created_at)
+      VALUES (?, ?, 'p', datetime('now', 'start of day', '-1 day', '+20 hours'))`).run(q.id, a.user.id);
+    const utc = (await api('GET', '/api/stats?tz=UTC', { token: a.token })).body;
+    const india = (await api('GET', '/api/stats?tz=Asia/Kolkata', { token: a.token })).body;
+    assert.deepEqual([utc.streak, utc.prayedToday], [1, false]);
+    assert.equal(india.streak, 1);
+    // Today in India only if India's date has not yet moved past that moment's date + 1.
+    const indiaToday = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
+    const prayedIndiaDay = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' })
+      .format(new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate() - 1, 20)));
+    assert.equal(india.prayedToday, prayedIndiaDay === indiaToday);
+  });
+
   test('no prayers means no streak; an invalid time zone falls back to UTC', async () => {
     const { api, admin } = setup();
     const a = await admin();
