@@ -57,9 +57,12 @@
     return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
   }
 
+  // Navigates and resolves once the new page has finished drawing. Showing a pop-up only after
+  // `await go(...)` matters: every page change clears #modal-root first.
+  let afterNav = [];
   function go(hash) {
-    if (location.hash === hash) render();
-    else location.hash = hash;
+    if (location.hash === hash) return render();
+    return new Promise((resolve) => { afterNav.push(resolve); location.hash = hash; });
   }
 
   function confetti() {
@@ -231,10 +234,9 @@
         } });
         state.user = user;
         await loadMe();
-        go(isLeader ? '#/members' : '#/');
-        setTimeout(() => isLeader
-          ? celebrate('👑', 'Welcome, System Admin!', 'Share the invite code below so cell members can sign up. From this page you can also reset passwords and remove members who have left.')
-          : celebrate('🎉', `Welcome, ${user.display_name}!`, 'You’ve joined the prayer wall. Share a request or pray for someone today.'), 300);
+        await go(isLeader ? '#/members' : '#/');
+        if (isLeader) celebrate('👑', 'Welcome, System Admin!', 'Share the invite code below so cell members can sign up. From this page you can also reset passwords and remove members who have left.');
+        else celebrate('🎉', `Welcome, ${user.display_name}!`, 'You’ve joined the prayer wall. Share a request or pray for someone today.');
       } catch (e2) { err.textContent = e2.message; btn.disabled = false; }
     };
   }
@@ -280,7 +282,7 @@
     bindPasswordForm(async () => {
       state.tempPassword = null;
       await refreshStats();
-      go('#/');
+      await go('#/');
       celebrate('🎉', 'You’re all set!', 'Your password has been changed. Welcome to the prayer wall.');
     });
   }
@@ -684,6 +686,10 @@
     }
   }
 
-  window.addEventListener('hashchange', render);
+  window.addEventListener('hashchange', async () => {
+    const waiting = afterNav;
+    afterNav = [];
+    try { await render(); } finally { waiting.forEach((resolve) => resolve()); }
+  });
   render();
 })();
