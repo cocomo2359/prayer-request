@@ -21,6 +21,9 @@ const fail = (status, message) => { throw new HttpError(status, message); };
 
 // ---------- small helpers ----------
 const str = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
+// Usernames are validated at full length (never truncated), so a too-long
+// username is rejected instead of silently becoming a different one.
+const cleanUsername = (v) => (typeof v === 'string' ? v.trim().toLowerCase() : '');
 const enc = new TextEncoder();
 const b64 = (bytes) => btoa(String.fromCharCode(...bytes));
 const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
@@ -188,7 +191,7 @@ const route = (method, pattern, handler) =>
 route('GET', '/api/setup-status', async (c) => ({ needsLeader: (await userCount(c)) === 0 }));
 
 route('POST', '/api/login', async (c, b) => {
-  const username = str(b.username, 40).toLowerCase();
+  const username = cleanUsername(b.username);
   const key = 'login:' + username;
   if (await blocked(c, key, 10)) fail(429, 'Too many attempts. Try again in 15 minutes.');
   const user = await c.one('SELECT * FROM users WHERE username = ?', username);
@@ -203,7 +206,7 @@ route('POST', '/api/login', async (c, b) => {
 // First account becomes System Admin; everyone after needs the invite code.
 route('POST', '/api/register', async (c, b) => {
   const display_name = str(b.display_name, 40);
-  const username = str(b.username, 30).toLowerCase();
+  const username = cleanUsername(b.username);
   const password = typeof b.password === 'string' ? b.password : '';
   const first = (await userCount(c)) === 0;
   if (!first) {
@@ -273,7 +276,7 @@ route('GET', '/api/members', async (c) => {
 
 route('POST', '/api/members', async (c, b) => {
   await admin(c);
-  const username = str(b.username, 30).toLowerCase();
+  const username = cleanUsername(b.username);
   const display_name = str(b.display_name, 40);
   if (!USERNAME_RE.test(username)) fail(400, USERNAME_MSG);
   if (!display_name) fail(400, 'Please enter the member’s name');
