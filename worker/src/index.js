@@ -266,12 +266,20 @@ route('PATCH', '/api/me', async (c, b) => {
 
 // ----- members -----
 route('GET', '/api/members', async (c) => {
-  await member(c);
+  const me = await member(c);
   const rows = await c.all(
     `SELECT id, username, display_name, avatar, is_admin, must_change_password, created_at
      FROM users ORDER BY is_admin DESC, display_name COLLATE NOCASE`
   );
-  return { members: rows.map((m) => ({ ...m, is_admin: !!m.is_admin, must_change_password: !!m.must_change_password })) };
+  // Only admins may see who is still on the (publicly known) default password;
+  // for anyone else that would point straight at accounts they could log into.
+  return {
+    members: rows.map(({ must_change_password, ...m }) => ({
+      ...m,
+      is_admin: !!m.is_admin,
+      ...(me.is_admin ? { must_change_password: !!must_change_password } : {}),
+    })),
+  };
 });
 
 route('POST', '/api/members', async (c, b) => {
