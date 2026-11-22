@@ -13,7 +13,7 @@ describe('setup-status and register', () => {
     assert.equal(r.body.user.must_change_password, false);
     assert.equal(r.body.user.username, 'pastor');
     assert.equal(r.body.user.display_name, 'Pastor');
-    assert.equal(r.body.user.avatar, '🕊️');
+    assert.match(r.body.user.avatar, /^c1:\d{8}$/);
     assert.match(r.body.token, /^[0-9a-f]{64}$/);
     assert.equal(r.body.user.password_hash, undefined);
     assert.deepEqual((await api('GET', '/api/setup-status')).body, { needsLeader: false });
@@ -164,6 +164,19 @@ describe('sessions and /api/me', () => {
     r = await api('PATCH', '/api/me', { token: a.token, body: { display_name: '   ', avatar: '💩' } });
     assert.equal(r.body.user.display_name, 'Pastor Dan');
     assert.equal(r.body.user.avatar, '🦁');
+  });
+
+  test('accepts made-up characters and rejects out-of-range parts', async () => {
+    const { api, admin, member } = setup();
+    const a = await admin();
+    const set = async (avatar) => (await api('PATCH', '/api/me', { token: a.token, body: { avatar } })).body.user.avatar;
+    assert.equal(await set('c1:75774375'), 'c1:75774375'); // the last choice of every part
+    assert.equal(await set('c1:00000000'), 'c1:00000000');
+    for (const bad of ['c1:80000000', 'c1:06000000', 'c1:00000600', 'c1:0000000', 'c1:000000000', 'c2:00000000', 'c1:0000000a', 42, null]) {
+      assert.equal(await set(bad), 'c1:00000000', String(bad));
+    }
+    const m = await member(a.token, 'mary');
+    assert.match(m.user.avatar, /^c1:\d{8}$/);
   });
 });
 
