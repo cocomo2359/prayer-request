@@ -6,6 +6,8 @@ A small, friendly prayer-request app for a Christian cell group (10–12 people)
 
 🎬 **Demo video (90 s):** [media/prayer-wall-demo.mp4](media/prayer-wall-demo.mp4)
 
+📖 **How-to guide (3 min):** [media/prayer-wall-guide.mp4](media/prayer-wall-guide.mp4): joining with the invite code, the dashboard, praying, posting and managing your requests, making your avatar, and the System Admin's tools.
+
 ## How it's built
 
 | Part | Choice | Cost |
