@@ -426,14 +426,17 @@ route('GET', '/api/stats', async (c) => {
   const me = await member(c);
   let tz = c.url.searchParams.get('tz') || 'UTC';
   try { dayIn(tz, new Date()); } catch { tz = 'UTC'; }
-  const times = (await c.all('SELECT created_at FROM prayers WHERE user_id = ? ORDER BY created_at DESC LIMIT 3000', me.id))
-    .map((r) => r.created_at);
+  // One row per distinct minute (UTC) is enough to place each prayer on the right
+  // local day in any time zone, and keeps the streak exact however many prayers there are.
+  const times = (await c.all(
+    `SELECT DISTINCT substr(created_at, 1, 16) AS t FROM prayers WHERE user_id = ? ORDER BY t DESC`, me.id
+  )).map((r) => r.t);
   const { streak, prayedToday } = streakFor(times, tz);
   const n = async (sql, ...a) => (await c.one(sql, ...a)).n;
   return {
     streak,
     prayedToday,
-    myPrayers: times.length,
+    myPrayers: await n('SELECT COUNT(*) AS n FROM prayers WHERE user_id = ?', me.id),
     prayedThisWeek: await n(`SELECT COUNT(*) AS n FROM prayers WHERE user_id = ? AND created_at >= datetime('now', '-7 days')`, me.id),
     weeklyGoal: 7,
     active: await n(`SELECT COUNT(*) AS n FROM requests WHERE status = 'active'`),
