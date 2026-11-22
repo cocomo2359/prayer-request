@@ -73,6 +73,16 @@ npm start
 
 Open http://localhost:8080 — on localhost the app talks to the local Worker automatically.
 
+## Tests
+
+The API has route tests that run on Node's built-in test runner — no extra packages:
+
+```bash
+cd worker && npm test
+```
+
+They call the Worker directly with an in-memory stand-in for D1 (built on Node's `node:sqlite`, loading `worker/schema.sql`) and print a coverage report. GitHub Actions runs them on every pull request. Requires Node 22.13 or newer.
+
 ## Project layout
 
 ```
@@ -86,6 +96,7 @@ worker/              the API (deployed to Cloudflare)
   src/index.js       routes, auth and all the rules
   schema.sql         D1 database tables
   wrangler.toml      Cloudflare settings
+  test/              route tests (npm test)
 .github/workflows/
   pages.yml          publishes public/ to GitHub Pages
 dev-server.js        local preview server for public/
