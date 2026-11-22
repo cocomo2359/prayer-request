@@ -172,7 +172,7 @@
           <button class="btn btn-primary btn-block" type="submit">Log in</button>
         </form>
         <p style="margin-top:18px" class="muted">New here? <a href="#/register">Create an account</a></p>
-        <div class="hint">If your system admin added you, your first password is <b>p@ssw0rd</b> — you’ll be asked to change it.</div>
+        <div class="hint">Forgot your password? Ask your system admin to reset it.</div>
       </div></div>`;
     const f = document.getElementById('f');
     f.username.focus();
@@ -183,6 +183,8 @@
       try {
         const { user } = await api('/login', { method: 'POST', body: { username: f.username.value, password: f.password.value } });
         state.user = user;
+        // Kept in memory only, so the "set your own password" screen doesn't ask for it again.
+        state.tempPassword = user.must_change_password ? f.password.value : null;
         await loadMe();
         go(user.must_change_password ? '#/change-password' : '#/');
       } catch (err) {
@@ -241,7 +243,7 @@
   function passwordForm(forced) {
     return `
       <form id="pw">
-        <div class="field"><label>Current password</label><input class="input" type="password" name="currentPassword" autocomplete="current-password" required ${forced ? 'value="p@ssw0rd"' : ''} /></div>
+        <div class="field"><label>${forced ? 'Temporary password' : 'Current password'}</label><input class="input" type="password" name="currentPassword" autocomplete="current-password" required /></div>
         <div class="field"><label>New password</label><input class="input" type="password" name="newPassword" autocomplete="new-password" minlength="6" required /></div>
         <div class="field"><label>Confirm new password</label><input class="input" type="password" name="confirm" autocomplete="new-password" minlength="6" required /></div>
         <div class="error-msg" id="pwerr"></div>
@@ -273,8 +275,11 @@
         <p style="margin-top:14px"><a href="#" id="lo">Log out</a></p>
       </div></div>`;
     document.getElementById('lo').onclick = (e) => { e.preventDefault(); logout(); };
-    document.querySelector('#pw [name=newPassword]').focus();
+    const cur = document.querySelector('#pw [name=currentPassword]');
+    if (state.tempPassword) cur.value = state.tempPassword;
+    (state.tempPassword ? document.querySelector('#pw [name=newPassword]') : cur).focus();
     bindPasswordForm(async () => {
+      state.tempPassword = null;
       await refreshStats();
       go('#/');
       celebrate('🎉', 'You’re all set!', 'Your password has been changed. Welcome to the prayer wall.');
@@ -519,15 +524,7 @@
             <button class="btn btn-ghost btn-sm" id="newCode">🔄 New code</button>
           </div>
         </div>
-        <form id="mf" class="card" style="margin-top:14px">
-          <h3>Add a member</h3>
-          <p class="muted small">New members log in with the default password <b>p@ssw0rd</b> and must change it on first login.</p>
-          <div class="field"><label>Full name</label><input class="input" name="display_name" maxlength="40" placeholder="e.g. Grace Tan" required /></div>
-          <div class="field"><label>Username</label><input class="input" name="username" maxlength="30" placeholder="e.g. grace" autocapitalize="none" required /></div>
-          <label style="display:flex;gap:8px;align-items:center;margin-bottom:12px"><input type="checkbox" name="is_admin" /> Also make them a System Admin (can manage members)</label>
-          <div class="error-msg" id="merr"></div>
-          <button class="btn btn-primary btn-block" type="submit">Add member</button>
-        </form>` : ''}
+        ` : ''}
       <div class="card" style="margin-top:14px">
         ${members.map((m) => `
           <div class="member-row">
@@ -561,25 +558,17 @@
       try { await api(`/members/${b.dataset.leader}/leader`, { method: 'POST', body: { is_admin: b.dataset.on === '1' } }); viewMembers(); }
       catch (err) { toast(err.message, true); }
     }));
-    const f = document.getElementById('mf');
-    f.display_name.oninput = () => {
-      if (f.username.dataset.touched) return;
-      f.username.value = f.display_name.value.trim().toLowerCase().split(/\s+/)[0]?.replace(/[^a-z0-9._-]/g, '') || '';
-    };
-    f.username.oninput = () => (f.username.dataset.touched = '1');
-    f.onsubmit = async (e) => {
-      e.preventDefault();
-      try {
-        await api('/members', { method: 'POST', body: { display_name: f.display_name.value, username: f.username.value, is_admin: f.is_admin.checked } });
-        const u = f.username.value.trim().toLowerCase();
-        await viewMembers();
-        celebrate('🎉', 'Member added!', `They can log in as "${u}" with password p@ssw0rd.`);
-      } catch (err) { document.getElementById('merr').textContent = err.message; }
-    };
     document.querySelectorAll('[data-reset]').forEach((b) => (b.onclick = async () => {
-      if (!(await confirmBox('Reset password?', `${b.dataset.name}'s password will be reset to p@ssw0rd and they will be logged out.`, 'Reset', false))) return;
-      try { await api(`/members/${b.dataset.reset}/reset-password`, { method: 'POST' }); toast('Password reset to p@ssw0rd'); viewMembers(); }
-      catch (err) { toast(err.message, true); }
+      if (!(await confirmBox('Reset password?', `${b.dataset.name} will be logged out and given a one-time password. They choose a new password when they next log in.`, 'Reset', false))) return;
+      try {
+        const { tempPassword } = await api(`/members/${b.dataset.reset}/reset-password`, { method: 'POST' });
+        await viewMembers();
+        modal(`<h3>🔑 One-time password for ${esc(b.dataset.name)}</h3>
+          <p class="muted small">Send this to them privately. When they log in with it, they’ll be asked to choose their own password.</p>
+          <div class="invite-code">${esc(tempPassword)}</div>
+          <button class="btn btn-primary btn-block" style="margin-top:14px" data-done>Done</button>`,
+          (el, close) => (el.querySelector('[data-done]').onclick = close));
+      } catch (err) { toast(err.message, true); }
     }));
     document.querySelectorAll('[data-remove]').forEach((b) => (b.onclick = async () => {
       if (!(await confirmBox('Remove member?', `${b.dataset.name} will no longer be able to log in, and all of their requests and prayers will be permanently deleted.`, 'Remove'))) return;
@@ -628,7 +617,7 @@
 
   async function logout() {
     try { await api('/logout', { method: 'POST' }); } catch { /* ignore */ }
-    state.user = null; state.stats = null;
+    state.user = null; state.stats = null; state.tempPassword = null;
     go('#/login');
   }
 

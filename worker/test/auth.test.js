@@ -43,7 +43,7 @@ describe('setup-status and register', () => {
       [{ display_name: 'Bob', username: 'b', password: 'secret1' }, /Username must be/],
       [{ display_name: 'Bob', username: 'bob smith', password: 'secret1' }, /Username must be/],
       [{ display_name: 'Bob', username: 'bob', password: '12345' }, /at least 6/],
-      [{ display_name: 'Bob', username: 'bob', password: 'p@ssw0rd' }, /other than the default/],
+      [{ display_name: 'Bob', username: 'bob', password: 'p@ssw0rd' }, /too easy to guess/],
       [{ display_name: 'Bob', username: 'ADMIN', password: 'secret1' }, /already taken/],
       [{ display_name: 'Bob', username: 'b'.repeat(31), password: 'secret1' }, /Username must be/],
     ];
@@ -175,7 +175,7 @@ describe('change password', () => {
     assert.match((await change('wrong', 'newpass1')).body.error, /Current password is incorrect/);
     assert.match((await change('admin123', '123')).body.error, /at least 6/);
     assert.match((await change('admin123', 42)).body.error, /at least 6/);
-    assert.match((await change('admin123', 'p@ssw0rd')).body.error, /other than the default/);
+    assert.match((await change('admin123', 'p@ssw0rd')).body.error, /too easy to guess/);
   });
 
   test('changing the password signs out other devices and allows the new one', async () => {
@@ -190,11 +190,12 @@ describe('change password', () => {
     assert.equal((await login('admin', 'newpass1')).status, 200);
   });
 
-  test('members on the default password must change it before using the app', async () => {
-    const { api, admin, login } = setup();
+  test('members on a temporary password must change it before using the app', async () => {
+    const { api, admin, member, login } = setup();
     const a = await admin();
-    await api('POST', '/api/members', { token: a.token, body: { username: 'grace', display_name: 'Grace' } });
-    const g = await login('grace', 'p@ssw0rd');
+    const grace = await member(a.token, 'grace');
+    const { tempPassword } = (await api('POST', `/api/members/${grace.user.id}/reset-password`, { token: a.token })).body;
+    const g = await login('grace', tempPassword);
     assert.equal(g.body.user.must_change_password, true);
     const t = g.body.token;
     assert.equal((await api('GET', '/api/me', { token: t })).status, 200); // allowed
@@ -203,7 +204,7 @@ describe('change password', () => {
       assert.equal(r.status, 403, `${m} ${p}`);
       assert.equal(r.body.error, 'Please change your password first');
     }
-    const r = await api('POST', '/api/me/password', { token: t, body: { currentPassword: 'p@ssw0rd', newPassword: 'grace123' } });
+    const r = await api('POST', '/api/me/password', { token: t, body: { currentPassword: tempPassword, newPassword: 'grace456' } });
     assert.equal(r.body.user.must_change_password, false);
     assert.equal((await api('GET', '/api/requests', { token: t })).status, 200);
   });

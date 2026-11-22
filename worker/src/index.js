@@ -1,7 +1,10 @@
 // Prayer Wall API – Cloudflare Worker + D1 (SQLite).
 // The app on GitHub Pages calls this with `Authorization: Bearer <session token>`.
 
-const DEFAULT_PASSWORD = 'p@ssw0rd';
+// The old shared starting password. Accounts that still use it are made to change it at login,
+// and nobody may pick it again.
+const OLD_DEFAULT_PASSWORD = 'p@ssw0rd';
+const WEAK_PASSWORD_MSG = 'That password is too easy to guess. Please choose another one';
 const SESSION_DAYS = 30;
 const MAX_MEMBERS = 30;
 // PBKDF2 rounds. Kept modest so a login fits in the Workers free plan CPU budget;
@@ -29,6 +32,8 @@ const b64 = (bytes) => btoa(String.fromCharCode(...bytes));
 const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
 const randomHex = (n) => [...crypto.getRandomValues(new Uint8Array(n))].map((b) => b.toString(16).padStart(2, '0')).join('');
 const randomAvatar = () => AVATARS[crypto.getRandomValues(new Uint8Array(1))[0] % AVATARS.length];
+// 8 characters from the same easy-to-read set as invite codes, e.g. "K7PQ2MXA".
+const newTempPassword = () => [...crypto.getRandomValues(new Uint8Array(8))].map((b) => CODE_CHARS[b % 32]).join('');
 const newInviteCode = () => [...crypto.getRandomValues(new Uint8Array(6))].map((b) => CODE_CHARS[b % 32]).join('');
 
 async function hashPassword(password, saltB64, rounds = PBKDF2_ROUNDS) {
@@ -220,7 +225,7 @@ route('POST', '/api/register', async (c, b) => {
   if (!display_name) fail(400, 'Please enter your name');
   if (!USERNAME_RE.test(username)) fail(400, USERNAME_MSG);
   if (password.length < 6) fail(400, 'Password must be at least 6 characters');
-  if (password === DEFAULT_PASSWORD) fail(400, 'Please choose a password other than the default');
+  if (password === OLD_DEFAULT_PASSWORD) fail(400, WEAK_PASSWORD_MSG);
   if ((await userCount(c)) >= MAX_MEMBERS) fail(400, `Member limit reached (${MAX_MEMBERS})`);
   if (await c.one('SELECT 1 FROM users WHERE username = ?', username)) fail(400, 'That username is already taken');
   const hash = await hashPassword(password);
@@ -247,7 +252,7 @@ route('POST', '/api/me/password', async (c, b) => {
   const me = await currentUser(c);
   if (!(await verifyPassword(b.currentPassword, me.password_hash))) fail(400, 'Current password is incorrect');
   if (typeof b.newPassword !== 'string' || b.newPassword.length < 6) fail(400, 'New password must be at least 6 characters');
-  if (b.newPassword === DEFAULT_PASSWORD) fail(400, 'Please choose a password other than the default');
+  if (b.newPassword === OLD_DEFAULT_PASSWORD) fail(400, WEAK_PASSWORD_MSG);
   const hash = await hashPassword(b.newPassword);
   await c.db.batch([
     c.db.prepare('UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?').bind(hash, me.id),
@@ -271,8 +276,8 @@ route('GET', '/api/members', async (c) => {
     `SELECT id, username, display_name, avatar, is_admin, must_change_password, created_at
      FROM users ORDER BY is_admin DESC, display_name COLLATE NOCASE`
   );
-  // Only admins may see who is still on the (publicly known) default password;
-  // for anyone else that would point straight at accounts they could log into.
+  // Only admins may see who still has to replace a temporary (or old default) password;
+  // for anyone else that would point at accounts worth guessing.
   return {
     members: rows.map(({ must_change_password, ...m }) => ({
       ...m,
@@ -282,30 +287,16 @@ route('GET', '/api/members', async (c) => {
   };
 });
 
-route('POST', '/api/members', async (c, b) => {
-  await admin(c);
-  const username = cleanUsername(b.username);
-  const display_name = str(b.display_name, 40);
-  if (!USERNAME_RE.test(username)) fail(400, USERNAME_MSG);
-  if (!display_name) fail(400, 'Please enter the member’s name');
-  if ((await userCount(c)) >= MAX_MEMBERS) fail(400, `Member limit reached (${MAX_MEMBERS})`);
-  if (await c.one('SELECT 1 FROM users WHERE username = ?', username)) fail(400, 'That username is already taken');
-  const row = await c.one(
-    `INSERT INTO users (username, display_name, password_hash, is_admin, must_change_password, avatar)
-     VALUES (?, ?, ?, ?, 1, ?) RETURNING id`,
-    username, display_name, await hashPassword(DEFAULT_PASSWORD), b.is_admin ? 1 : 0, randomAvatar()
-  );
-  return { id: row.id, defaultPassword: DEFAULT_PASSWORD };
-});
-
 route('POST', '/api/members/:id/reset-password', async (c, b, p) => {
   await admin(c);
   const id = Number(p.id);
+  // A fresh random one-time password: the admin passes it on, and the member must replace it at login.
+  const tempPassword = newTempPassword();
   const res = await c.run('UPDATE users SET password_hash = ?, must_change_password = 1 WHERE id = ?',
-    await hashPassword(DEFAULT_PASSWORD), id);
+    await hashPassword(tempPassword), id);
   if (!res.meta.changes) fail(404, 'Member not found');
   await c.run('DELETE FROM sessions WHERE user_id = ?', id);
-  return { ok: true, defaultPassword: DEFAULT_PASSWORD };
+  return { ok: true, tempPassword };
 });
 
 route('POST', '/api/members/:id/leader', async (c, b, p) => {
