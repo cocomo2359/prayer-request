@@ -26,6 +26,7 @@ All the rules (logins, invite code, admin-only member management, owner-only edi
 | 4 | Owner-only changes | Only the person who posted a request can edit, delete, or mark it answered (with a praise report). Enforced in the database. |
 | 5 | Pray for others | Every member can add a written prayer to any request, and remove their own. |
 | ✨ | Dashboard | Verse of the day, 🔥 prayer streak, weekly goal, "this week's intercessors" leaderboard, filters, confetti for answered prayers. Works well on phones. |
+| 🧑‍🎨 | Avatars | Each member gets a Duolingo-style cartoon character and can customise it under **Profile**: background, skin, hair style and colour, eyes, mouth, outfit and an extra (glasses, shades, cap, flower or halo), or tap **Surprise me**. |
 
 ## Setting it up (one time)
 

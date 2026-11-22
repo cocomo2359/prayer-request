@@ -3,7 +3,6 @@
   const $app = document.getElementById('app');
   const state = {
     user: null,
-    avatars: ['🙂', '😊', '🕊️', '🌻', '🌿', '⭐', '🔥', '🦁', '🐑', '🌈', '☀️', '💧', '🍇', '🌾', '⛰️', '🎵'],
     categories: ['General', 'Health', 'Family', 'Work', 'Studies', 'Finances', 'Spiritual', 'Thanksgiving'],
     filter: 'all',
     stats: null,
@@ -139,7 +138,7 @@
                 <span class="stat-pill fire ${s.prayedToday ? '' : 'cold'}" title="Prayer streak (days in a row)">🔥 ${s.streak}</span>
                 <span class="stat-pill pray" title="Prayers you have offered">🙏 ${s.myPrayers}</span>
                 <span class="stat-pill gold" title="Answered prayers in the cell">⭐ ${s.answered}</span>` : ''}
-              <span class="avatar" title="${esc(state.user.display_name)}">${esc(state.user.avatar)}</span>
+              ${Avatar.html(state.user.avatar, '', state.user.display_name)}
             </div>
             ${inner}
           </div>
@@ -296,7 +295,7 @@
     return `
       <a class="req-card ${r.status === 'answered' ? 'answered' : ''}" href="#/request/${r.id}">
         <div class="head">
-          <span class="avatar">${esc(r.author_avatar)}</span>
+          ${Avatar.html(r.author_avatar)}
           <div class="who"><div class="n">${esc(r.is_mine ? 'You' : r.author_name)}</div><div class="muted small">${timeAgo(r.created_at)}</div></div>
         </div>
         <div class="title">${esc(r.title)}</div>
@@ -322,7 +321,7 @@
         <p class="muted small">Prayers offered in the last 7 days</p>
         ${s.leaderboard.map((l, i) => `
           <div class="leader-row ${l.id === state.user.id ? 'me' : ''}">
-            ${rank(i)}<span class="avatar">${esc(l.avatar)}</span>
+            ${rank(i)}${Avatar.html(l.avatar)}
             <span class="name">${esc(l.display_name)}</span><span class="xp">${l.n} 🙏</span>
           </div>`).join('')}
       </div>`;
@@ -416,7 +415,7 @@
       <a class="back" href="#/">← Prayer wall</a>
       <div class="card ${answered ? 'req-card answered' : ''}" style="${answered ? 'margin:0' : ''}">
         <div class="head" style="display:flex;gap:10px;align-items:center">
-          <span class="avatar">${esc(r.author_avatar)}</span>
+          ${Avatar.html(r.author_avatar)}
           <div style="flex:1"><b>${esc(r.is_mine ? 'You' : r.author_name)}</b>
             <div class="muted small">${timeAgo(r.created_at)}${r.updated_at !== r.created_at ? ' · edited' : ''}</div></div>
           ${answered ? '<span class="tag answered">⭐ Answered</span>' : '<span class="tag active">Praying</span>'}
@@ -446,7 +445,7 @@
       <div class="card" style="margin-top:14px">
         ${prayers.length ? prayers.map((p) => `
           <div class="prayer">
-            <span class="avatar">${esc(p.author_avatar)}</span>
+            ${Avatar.html(p.author_avatar)}
             <div class="bubble">
               <div class="meta"><b>${esc(p.is_mine ? 'You' : p.author_name)}</b><span class="muted small">${timeAgo(p.created_at)}</span></div>
               <div class="text">${esc(p.body)}</div>
@@ -528,7 +527,7 @@
       <div class="card" style="margin-top:14px">
         ${members.map((m) => `
           <div class="member-row">
-            <span class="avatar">${esc(m.avatar)}</span>
+            ${Avatar.html(m.avatar)}
             <div class="info">
               <b>${esc(m.display_name)}</b> ${m.is_admin ? '<span class="tag mine">System Admin</span>' : ''}
               <div class="muted small">@${esc(m.username)}${admin && m.must_change_password ? ' · hasn’t set a password yet' : ''}</div>
@@ -580,30 +579,56 @@
   async function viewProfile() {
     if (!state.stats) await refreshStats();
     const u = state.user;
-    let avatar = u.avatar;
+    // Work on a copy of the character; members still on an old emoji start from a random one.
+    const char = Avatar.decode(u.avatar) || Avatar.decode(Avatar.random());
+    let part = 'hair';
+    let avatar;
     shell(`
       <div style="text-align:center;margin-bottom:14px">
-        <span class="avatar lg" id="bigav">${esc(u.avatar)}</span>
+        <div id="bigav">${Avatar.html(u.avatar, 'xl', u.display_name)}</div>
         <h1 style="margin-top:10px">${esc(u.display_name)}</h1>
         <p class="muted">@${esc(u.username)} ${u.is_admin ? '· System Admin' : ''}</p>
       </div>
       <form id="prof" class="card">
         <h3>Your profile</h3>
         <div class="field"><label>Display name</label><input class="input" name="display_name" maxlength="40" value="${esc(u.display_name)}" required /></div>
-        <div class="field"><label>Avatar</label><div class="avatar-pick">
-          ${state.avatars.map((a) => `<button type="button" class="${a === u.avatar ? 'on' : ''}" data-av="${esc(a)}">${esc(a)}</button>`).join('')}
-        </div></div>
+        <div class="field">
+          <div class="maker-head"><span id="miniav"></span><label>Avatar</label><button type="button" class="btn btn-ghost btn-sm" id="dice">🎲 Surprise me</button></div>
+          <div class="maker-tabs" role="tablist">
+            ${Avatar.PARTS.map(([k, label]) => `<button type="button" role="tab" class="chip" data-part="${k}">${label}</button>`).join('')}
+          </div>
+          <div class="maker-opts" id="opts"></div>
+        </div>
         <button class="btn btn-primary btn-block" type="submit">Save profile</button>
       </form>
       <div class="card"><h3>Change password</h3>${passwordForm(false)}</div>
       <div style="margin-top:18px"><button class="btn btn-ghost danger btn-block" id="logout">Log out</button></div>`);
 
     const pf = document.getElementById('prof');
-    pf.querySelectorAll('[data-av]').forEach((b) => (b.onclick = () => {
-      avatar = b.dataset.av;
-      pf.querySelectorAll('[data-av]').forEach((x) => x.classList.toggle('on', x === b));
-      document.getElementById('bigav').textContent = avatar;
-    }));
+    const opts = document.getElementById('opts');
+    const draw = () => {
+      avatar = Avatar.encode(char);
+      document.getElementById('bigav').innerHTML = Avatar.html(avatar, 'xl', u.display_name);
+      document.getElementById('miniav').innerHTML = Avatar.html(avatar, 'lg', 'Preview');
+      pf.querySelectorAll('[data-part]').forEach((b) => {
+        b.classList.toggle('on', b.dataset.part === part);
+        b.setAttribute('aria-selected', b.dataset.part === part);
+      });
+      const [, , count, names] = Avatar.PARTS.find(([k]) => k === part);
+      const colours = Avatar.SWATCHES[part];
+      opts.className = 'maker-opts ' + (colours ? 'swatches' : 'faces');
+      opts.innerHTML = Array.from({ length: count }, (_, i) => {
+        const on = char[part] === i ? 'on' : '';
+        return colours
+          ? `<button type="button" class="${on}" data-opt="${i}" aria-label="Colour ${i + 1}" style="background:${colours[i]}"></button>`
+          : `<button type="button" class="${on}" data-opt="${i}" aria-label="${names[i]}">${Avatar.html(Avatar.encode({ ...char, [part]: i }))}<span>${names[i]}</span></button>`;
+      }).join('');
+      opts.querySelectorAll('[data-opt]').forEach((b) => (b.onclick = () => { char[part] = Number(b.dataset.opt); draw(); }));
+    };
+    pf.querySelectorAll('[data-part]').forEach((b) => (b.onclick = () => { part = b.dataset.part; draw(); }));
+    document.getElementById('dice').onclick = () => { Object.assign(char, Avatar.decode(Avatar.random())); draw(); };
+    draw();
+    if (!Avatar.decode(u.avatar)) toast('Make your new avatar, then tap Save profile ✨');
     pf.onsubmit = async (e) => {
       e.preventDefault();
       try {

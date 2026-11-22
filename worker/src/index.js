@@ -11,7 +11,16 @@ const MAX_MEMBERS = 30;
 // the round count is stored with each hash, so it can be raised later.
 const PBKDF2_ROUNDS = 20000;
 
-const AVATARS = ['🙂', '😊', '🕊️', '🌻', '🌿', '⭐', '🔥', '🦁', '🐑', '🌈', '☀️', '💧', '🍇', '🌾', '⛰️', '🎵'];
+// Avatars are Duolingo-style characters stored as "c1:" + one digit per part (see public/avatar.js):
+// background, skin, hair, hair colour, eyes, mouth, outfit, extra. These are the choices per part.
+const AVATAR_PARTS = [8, 6, 8, 8, 5, 4, 8, 6];
+// Emoji avatars from before the character maker; still accepted so old profiles keep working.
+const LEGACY_AVATARS = ['🙂', '😊', '🕊️', '🌻', '🌿', '⭐', '🔥', '🦁', '🐑', '🌈', '☀️', '💧', '🍇', '🌾', '⛰️', '🎵'];
+const isAvatar = (v) => {
+  if (LEGACY_AVATARS.includes(v)) return true;
+  if (typeof v !== 'string' || !/^c1:\d+$/.test(v) || v.length !== 3 + AVATAR_PARTS.length) return false;
+  return AVATAR_PARTS.every((n, i) => Number(v[3 + i]) < n);
+};
 const CATEGORIES = ['General', 'Health', 'Family', 'Work', 'Studies', 'Finances', 'Spiritual', 'Thanksgiving'];
 const USERNAME_RE = /^[a-z0-9._-]{3,30}$/;
 const USERNAME_MSG = 'Username must be 3–30 characters: letters, numbers, dot, dash or underscore';
@@ -31,7 +40,7 @@ const enc = new TextEncoder();
 const b64 = (bytes) => btoa(String.fromCharCode(...bytes));
 const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
 const randomHex = (n) => [...crypto.getRandomValues(new Uint8Array(n))].map((b) => b.toString(16).padStart(2, '0')).join('');
-const randomAvatar = () => AVATARS[crypto.getRandomValues(new Uint8Array(1))[0] % AVATARS.length];
+const randomAvatar = () => 'c1:' + [...crypto.getRandomValues(new Uint8Array(AVATAR_PARTS.length))].map((b, i) => b % AVATAR_PARTS[i]).join('');
 // 8 characters from the same easy-to-read set as invite codes, e.g. "K7PQ2MXA".
 const newTempPassword = () => [...crypto.getRandomValues(new Uint8Array(8))].map((b) => CODE_CHARS[b % 32]).join('');
 const newInviteCode = () => [...crypto.getRandomValues(new Uint8Array(6))].map((b) => CODE_CHARS[b % 32]).join('');
@@ -232,8 +241,7 @@ route('POST', '/api/register', async (c, b) => {
   // is_admin is decided inside the INSERT so two simultaneous first sign-ups can't both become admin.
   const user = await c.one(
     `INSERT INTO users (username, display_name, password_hash, is_admin, must_change_password, avatar)
-     VALUES (?1, ?2, ?3, (SELECT COUNT(*) = 0 FROM users), 0,
-             CASE WHEN (SELECT COUNT(*) FROM users) = 0 THEN '🕊️' ELSE ?4 END)
+     VALUES (?1, ?2, ?3, (SELECT COUNT(*) = 0 FROM users), 0, ?4)
      RETURNING *`,
     username, display_name, hash, randomAvatar()
   );
@@ -264,7 +272,7 @@ route('POST', '/api/me/password', async (c, b) => {
 route('PATCH', '/api/me', async (c, b) => {
   const me = await member(c);
   const display_name = str(b.display_name, 40) || me.display_name;
-  const avatar = AVATARS.includes(b.avatar) ? b.avatar : me.avatar;
+  const avatar = isAvatar(b.avatar) ? b.avatar : me.avatar;
   await c.run('UPDATE users SET display_name = ?, avatar = ? WHERE id = ?', display_name, avatar, me.id);
   return { user: publicUser(await c.one('SELECT * FROM users WHERE id = ?', me.id)) };
 });
